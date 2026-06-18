@@ -1,0 +1,38 @@
+# why do we need the get the snapshot during the live match
+pub fn get_match_snapshot(state: &StateManager) -> Result<engine::MatchSnapshot, String> {
+    log::debug!("[cmd] get_match_snapshot");
+    let snapshot = state
+        .with_live_match(|session| session.snapshot())
+        .ok_or_else(|| "be.error.noActiveLiveMatch".to_string())?;
+
+    info!(
+        "[cmd] get_match_snapshot: phase={:?}, minute={}, home_team={}, away_team={}",
+        snapshot.phase, snapshot.current_minute, snapshot.home_team.name, snapshot.away_team.name
+    );
+
+    Ok(snapshot)
+}
+
+# mod.rs = what would be the extra possible mods in a live sofifa match
+# this sould serve as an option to play out the match without it being sofifa
+
+# decisions for the eventual app in-game can be affected by in-game live stats, player personality,
+recent situational history that has to backed up by stats like xG, comeBacks...
+
+# we need two options for transfers : the norm done (end-of-season transfers) and the one-game transfers
+
+# we need to similarly export thev table data for the one-game simulation situations
+# mut keyword in rust means what
+
+# fn find_best_bench_replacement should basically replaced by find_nearest_similar_player
+but also we should be able to see the weaknesses and steps or events to exploit these weaknesses
+of  the formations and patterns of play in general and be able to choose the possible exploitation options
+these exploitation options should also be in sync and executable by the players qualities
+
+if the strategies or options are not exploitation due to the qualities of the players being somehow insufficient in some area,
+then it should be brought up and explained in detailed.
+
+# these events, details of how each player qualities contributed to events should be included in the match reports
+# it should be in an interface called action types
+
+

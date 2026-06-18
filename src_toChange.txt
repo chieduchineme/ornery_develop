@@ -1,0 +1,20 @@
+interface AppSettings needs to remove currency
+Some only applies to the binding application : interface CurrencyDefinition
+
+
+Some are not valid for the eventual plan : 
+# make it possible to press escape, and it would return back to "Home"
+
+C:\Users\chied\Downloads\ornery\others_open_source\openfootmanager-develop\docs\ARCHITECTURE.md
+
+C:\Users\chied\Downloads\ornery\others_open_source\openfootmanager-develop\docs\GAME_SYSTEMS.md
+
+
+**Navigation history**: The Dashboard maintains a `navHistory` stack for back navigation when drilling into player/team profiles from any tab.
+Extend this to all game pages
+
+advantages and disadvantages of conditional rendering (not routing) for tabs
+
+`advance_time_with_mode("live")` detects the fixture and returns `action: "live_match"` instead of simulating
+2. The frontend navigates to `/match`, the user plays through the match interactively
+`action: "live_match"` should use /match of openmanager

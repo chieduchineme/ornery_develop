@@ -1,0 +1,19 @@
+let loadedChunks = new Set();
+mergeData()
+loadedChunks.add(0)
+new PIXI -> what is this PIXI
+inspect `/api/match/${matchId}/chunk/ to get chunkRes
+
+get the chunks
+initialize the PIXI application
+append it to the dom
+attach the field to the PIXI
+ 
+where are we and how are we storing these chunks - chunk.rs
+difference between chunk_action and metadata_action
+
+
+match_get_action -> espn kind summary of a played match
+C:\Users\chied\Downloads\ornery\others_open_source\open-football-0.8.0\src\web\src\game -> spawning or simulation of the match as a game
+
+need to know why we still need a game folder even after all the functionalities in match folder

@@ -1,0 +1,12 @@
+- tauri commands
+- crates workspaces
+
+- difference between game domain models here and in a sofifa game
+- how to access the swagger of the backend
+- why would WebKitGTK DMABuf rendering issues occur on Wayland (Linux)
+
+# get_settings(app_handle: tauri::AppHandle) : why is tauri used as a decorator for AppHandle
+# does rust snapshot ability make it better for simulation engines
+# explain the mut and impl keywords in rust
+# event contains player actions which contains ... keep breaking it down
+

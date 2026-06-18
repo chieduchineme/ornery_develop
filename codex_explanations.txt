@@ -1,0 +1,243 @@
+bring the 'next match' to the front by 
+starting the match; cutting off the app;
+try again
+
+C:\Users\chied\Downloads\ornery\others_open_source\openfootmanager-develop\src\components\match
+C:\Users\chied\Downloads\ornery\others_open_source\openfootmanager-develop\src-tauri\src\commands\live_match.rs
+
+-------------------------------------------------------------------------------------------------------------------------------
+
+benefits of crates and tauri here
+
+## Deep repo details: src and src-tauri
+
+---
+
+## src — frontend application
+
+### Entry points
+- main.tsx
+  - bootstraps React
+  - waits for `i18nReady`
+  - wraps the app in `ThemeProvider`
+- App.tsx
+  - sets up `BrowserRouter`
+  - lazy-loads main pages:
+    - `/` → `MainMenu`
+    - `/select-team` → `TeamSelection`
+    - `/dashboard` → `Dashboard`
+    - `/match` → `MatchSimulation`
+    - `/settings` → `Settings`
+  - manages app-level UI settings:
+    - font scaling via `settings.ui_scale`
+    - high-contrast mode
+    - app language changes using `changeAppLanguage`
+
+### UI structure
+- components
+  - feature-based organization:
+    - `dashboard/`
+    - `match/`
+    - `squad/`
+    - `transfers/`
+    - `scouting/`
+    - `staff/`
+    - `training/`
+    - `inbox/`
+    - `news/`
+    - `teamProfile/`
+    - plus shared UI pieces like `ContextMenu.tsx`, `TraitBadge.tsx`, `NextMatchDisplay.tsx`
+  - `components/menu/` contains startup flow UI:
+    - world selection
+    - manager creation
+    - save loading
+
+- pages
+  - route-level screens and top-level pages
+  - each page is the container that composes components, services, and store state
+
+### State management
+- store
+  - settingsStore.ts
+    - zustand store for app preferences
+    - loads settings through Tauri command `get_settings`
+    - persists changes via `save_settings`
+    - tracks supported currency metadata and resolves currency codes
+  - gameStore.ts
+    - holds active game session state
+    - normalizes nationalities for players/managers/staff
+    - tracks `hasActiveGame`, `isDirty`, `showFiredModal`
+  - types.ts
+    - large shared TS model definitions for:
+      - `TeamData`
+      - `PlayerData`
+      - `StaffData`
+      - transfers, fixtures, standings, news/messages, manager profiles, finance, season context
+    - these types are used across UI, services, and stores
+
+### Backend integration
+- services
+  - each service is a typed wrapper around Tauri `invoke(...)`
+  - examples:
+    - financeService.ts → `invoke("get_finance_snapshot", ...)`
+    - `transfersService.ts`
+    - `trainingService.ts`
+    - `staffService.ts`
+    - `scoutingService.ts`
+    - `advanceTimeService.ts`
+  - services convert backend response shapes (snake_case) into frontend-friendly TS/camelCase models
+
+### Internationalization
+- i18n
+  - index.ts configures `i18next`
+  - dynamic locale loading with `import.meta.glob("./locales/*.json")`
+  - supports language detection and normalization for:
+    - `en`, `es`, `pt`, `fr`, `de`, `it`, `ru`, `pt-BR`, `zh-CN`
+  - `resolveSupportedLanguage()` maps unsupported or variant locales to supported codes
+
+### UI theme + helpers
+- ThemeContext.tsx
+  - provides theme state and toggle
+  - persists choice to `localStorage`
+- lib
+  - reusable utilities:
+    - `dateFormatting.ts`
+    - `valueFormatting.ts`
+    - `contractUtils.ts`
+    - `playerRating.ts`
+    - `playerOvr.ts`
+    - country names, fixture helpers, season context helpers
+- utils
+  - backendI18n.ts resolves backend translation keys and error messages
+  - centralizes translation fallback logic and parameter normalization
+  - `errorMessage.ts` likely handles generic error extraction
+
+---
+
+## src-tauri — native app shell + game backend
+
+### Tauri configuration
+- tauri.conf.json
+  - app metadata: `productName`, `version`, `identifier`
+  - dev flow:
+    - `beforeDevCommand`: `npm run dev`
+    - `devUrl`: `http://localhost:1420`
+  - build flow:
+    - `beforeBuildCommand`: `npm run build`
+    - `frontendDist`: `../dist`
+  - window sizing and bundling targets
+- build.rs
+  - single-line Tauri build launcher: `tauri_build::build()`
+
+### Application startup
+- main.rs
+  - minimal entrypoint that calls `openfootmanager_lib::run()`
+
+- lib.rs
+  - core Tauri app builder
+  - registers plugins:
+    - `tauri_plugin_opener`
+    - `tauri_plugin_log`
+  - configures logging and log rotation
+  - creates app state:
+    - `StateManager` (game session + live match + stats)
+    - `SaveManagerState` for persistent saves
+  - performs startup file setup:
+    - ensures app data directory exists
+    - initializes `SaveManager`
+    - detects and migrates legacy `saves.db`
+  - exposes Tauri commands via `invoke_handler(...)`
+    - includes 70+ commands such as `start_new_game`, `advance_time`, `save_game`, `start_live_match`, `load_game`, `get_settings`, `save_settings`, `apply_team_talk`, etc.
+
+### Command layer
+- commands
+  - each module defines backend command implementations and serde DTOs
+  - folder layout:
+    - game.rs
+    - `transfers.rs`
+    - `squad.rs`
+    - `staff.rs`
+    - `finances.rs`
+    - `messages.rs`
+    - `live_match.rs`
+    - `season.rs`
+    - `jobs.rs`
+    - `world.rs`
+    - settings.rs
+    - `club.rs`
+    - `contracts.rs`
+    - `time.rs`
+    - `profiles.rs`
+    - `round_summary.rs`
+    - plus `stats/` submodule
+  - example: settings.rs
+    - loads/writes `settings.json`
+    - validates currency and language
+    - returns metadata like supported currencies for the frontend
+    - contains `clear_all_saves()`
+  - these command files are the bridge between UI and the Rust game engine
+
+### Application abstractions
+- application
+  - shared game logic helpers used by commands
+  - contains:
+    - time_advancement.rs
+      - handles day progression
+      - dispatches live/spectator/delegate match flow
+      - captures game events and round summaries
+    - `live_match.rs`
+    - `team_talk.rs`
+    - `time_blockers.rs`
+  - these modules encapsulate server-side gameplay flow separate from raw command entrypoints
+
+### Native workspace crates
+- crates
+  - `domain/`
+    - canonical game domain models and types
+    - includes managers, teams, players, news, staff, season, stats, league representations
+  - `ofm_core/`
+    - the central game core
+    - includes:
+      - game state
+      - contracts, transfers, finances, squad safety, season awards
+      - history generation
+      - player aging and reputation
+      - match scheduling
+      - live match manager
+      - news and message systems
+  - `engine/`
+    - match simulation engine
+    - live match runtime
+    - event generation and match reports
+    - exposes `simulate`, `simulate_with_rng`, `LiveMatchState`, `MatchCommand`, `MatchSnapshot`, etc.
+  - `db/`
+    - persistence layer for saves
+    - save index and manager
+    - migration from legacy save formats
+    - game database serialization and repositories
+
+### Runtime data and assets
+- data
+  - likely holds world databases, default data, or generated content consumed by the backend
+- databases
+  - probably runtime SQLite or prebuilt DB assets
+- icons
+  - native app icons for bundling
+
+---
+
+## Summary of how the two halves connect
+
+- src is the UI shell:
+  - React views
+  - state management
+  - localization
+  - service wrappers around Tauri commands
+- src-tauri is the native host:
+  - Tauri bridge
+  - command implementations
+  - game engine state manager
+  - persistence and save handling
+  - domain/game logic crates
+
+The frontend calls backend commands like `get_settings`, `get_finance_snapshot`, `advance_time_with_mode`, `start_live_match`, and those commands execute Rust logic in `src-tauri/src/commands/*` and the underlying workspace crates.
