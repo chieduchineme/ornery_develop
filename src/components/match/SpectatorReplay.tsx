@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
-import { Circle, Loader2 } from "lucide-react";
+import { Circle, Loader2, Zap, Shield } from "lucide-react";
 import {
   MatchSnapshot,
   SpectatorReplayChunk,
@@ -10,6 +10,7 @@ import {
   SpectatorReplayPlayer,
 } from "./types";
 import { getEventTypeLabel, getPlayerName, phaseLabel } from "./helpers";
+import { analyzePrimaryPattern } from "../../utils/patternAnalyzer";
 
 interface SpectatorReplayProps {
   snapshot: MatchSnapshot;
@@ -226,27 +227,42 @@ export default function SpectatorReplay({
             <circle cx={visualFrame.ball_x} cy={visualFrame.ball_y} r="1.6" fill="#ffffff" stroke="#111827" strokeWidth="0.4" />
             <circle cx={visualFrame.ball_x} cy={visualFrame.ball_y} r="3.4" fill="none" stroke="#ffffff" strokeOpacity="0.28" strokeWidth="0.7" />
           </svg>
-          <div className="absolute bottom-3 left-3 flex items-center gap-4 rounded bg-black/40 px-3 py-2 text-xs font-heading text-white">
-            <span>{targetFrame.home_score} - {targetFrame.away_score}</span>
-            <span className="flex items-center gap-1">
-              <Circle className="w-3 h-3 fill-current" />
-              {targetFrame.ball_zone}
-            </span>
+          <div className="absolute bottom-3 left-3 flex flex-col gap-2 rounded bg-black/40 px-3 py-2 text-xs font-heading text-white">
+            <div className="flex items-center gap-4">
+              <span>{targetFrame.home_score} - {targetFrame.away_score}</span>
+              <span className="flex items-center gap-1">
+                <Circle className="w-3 h-3 fill-current" />
+                {targetFrame.ball_zone}
+              </span>
+            </div>
+            {/* Quick tactical indicator */}
+            <TacticalIndicator
+              possession={targetFrame.possession}
+              ballZone={targetFrame.ball_zone}
+            />
           </div>
         </div>
       </div>
 
-      <aside className="min-h-0 overflow-auto border-l border-gray-200 bg-white p-4 dark:border-navy-700 dark:bg-navy-800">
-        <h3 className="text-xs font-heading font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400 mb-3">
-          {t("match.events")}
-        </h3>
-        <div className="space-y-2">
-          {frameEvents.length > 0 ? frameEvents.map((event, index) => (
-            <div key={`${event.minute}-${event.event_type}-${index}`} className="rounded border border-gray-200 p-2 dark:border-navy-700">
-              <div className="flex items-center justify-between gap-2 text-xs">
-                <span className="font-heading font-bold text-gray-800 dark:text-gray-200">
-                  {getEventTypeLabel(event.event_type, t)}
-                </span>
+      <aside className="min-h-0 overflow-auto border-l border-gray-200 bg-white p-4 dark:border-navy-700 dark:bg-navy-800 flex flex-col gap-4">
+        {/* Tactical Analysis Panel */}
+        <TacticalAnalysisPanel
+          snapshot={snapshot}
+          isVisible={true}
+        />
+
+        {/* Events Feed */}
+        <div>
+          <h3 className="text-xs font-heading font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400 mb-3">
+            {t("match.events")}
+          </h3>
+          <div className="space-y-2">
+            {frameEvents.length > 0 ? frameEvents.map((event, index) => (
+              <div key={`${event.minute}-${event.event_type}-${index}`} className="rounded border border-gray-200 p-2 dark:border-navy-700">
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="font-heading font-bold text-gray-800 dark:text-gray-200">
+                    {getEventTypeLabel(event.event_type, t)}
+                  </span>
                 <span className="tabular-nums text-gray-500">{event.minute}'</span>
               </div>
               <p className="mt-1 truncate text-xs text-gray-600 dark:text-gray-400">
@@ -256,10 +272,11 @@ export default function SpectatorReplay({
           )) : (
             <p className="text-xs text-gray-600 dark:text-gray-500">{t("match.noEventsYet")}</p>
           )}
+          </div>
         </div>
       </aside>
     </div>
-  );
+  )
 }
 
 function ReplayPlayers({
@@ -403,4 +420,123 @@ function easeInOut(progress: number): number {
   return progress < 0.5
     ? 2 * progress * progress
     : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+}
+
+interface TacticalIndicatorProps {
+  possession: "Home" | "Away";
+  ballZone: string;
+}
+
+function TacticalIndicator({ possession, ballZone }: TacticalIndicatorProps) {
+  const isAttacking = ballZone.includes("attacking");
+  const defendingZone = ballZone.includes("defensive");
+
+  return (
+    <div className="flex items-center gap-2 text-[10px]">
+      {possession === "Home" ? (
+        <Zap className="w-3 h-3 text-blue-300" />
+      ) : (
+        <Shield className="w-3 h-3 text-red-300" />
+      )}
+      <span className="text-white/80">
+        {isAttacking ? "Attacking" : defendingZone ? "Defending" : "Midfield"}
+      </span>
+    </div>
+  );
+}
+
+interface TacticalAnalysisPanelProps {
+  snapshot: MatchSnapshot;
+  isVisible: boolean;
+}
+
+function TacticalAnalysisPanel({
+  snapshot,
+  isVisible,
+}: TacticalAnalysisPanelProps) {
+  const analysis = useMemo(() => {
+    return analyzePrimaryPattern({
+      homePlayStyle: snapshot.home_team.play_style,
+      awayPlayStyle: snapshot.away_team.play_style,
+      possession: snapshot.possession,
+      ballZone: snapshot.ball_zone,
+      homePossession_pct: snapshot.home_possession_pct,
+      awayPossession_pct: snapshot.away_possession_pct,
+      formation_home: snapshot.home_team.formation,
+      formation_away: snapshot.away_team.formation,
+    });
+  }, [snapshot]);
+
+  if (!isVisible) return null;
+
+  return (
+    <div className="border-t border-gray-200 dark:border-navy-700 pt-4">
+      <h3 className="text-xs font-heading font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400 mb-3">
+        Tactics
+      </h3>
+
+      <div className="space-y-3">
+        {/* Home Team */}
+        <div className="rounded-lg border border-blue-300 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-900/20 p-2">
+          <p className="text-xs font-heading font-bold text-gray-800 dark:text-gray-200 mb-1">
+            {snapshot.home_team.name}
+          </p>
+          <p className="text-[10px] text-gray-700 dark:text-gray-300 leading-tight">
+            {analysis.home}
+          </p>
+          <div className="mt-2 flex gap-1">
+            <MetricBadge
+              label="Press"
+              value={analysis.homePattern.pressureIntensity}
+            />
+            <MetricBadge
+              label="Compact"
+              value={analysis.homePattern.compactness}
+            />
+          </div>
+        </div>
+
+        {/* Away Team */}
+        <div className="rounded-lg border border-red-300 dark:border-red-900 bg-red-50/50 dark:bg-red-900/20 p-2">
+          <p className="text-xs font-heading font-bold text-gray-800 dark:text-gray-200 mb-1">
+            {snapshot.away_team.name}
+          </p>
+          <p className="text-[10px] text-gray-700 dark:text-gray-300 leading-tight">
+            {analysis.away}
+          </p>
+          <div className="mt-2 flex gap-1">
+            <MetricBadge
+              label="Press"
+              value={analysis.awayPattern.pressureIntensity}
+            />
+            <MetricBadge
+              label="Compact"
+              value={analysis.awayPattern.compactness}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface MetricBadgeProps {
+  label: string;
+  value: number;
+}
+
+function MetricBadge({ label, value }: MetricBadgeProps) {
+  const getColor = () => {
+    if (value > 75) return "bg-red-600 text-white";
+    if (value > 50) return "bg-yellow-600 text-white";
+    return "bg-green-600 text-white";
+  };
+
+  return (
+    <span
+      className={`px-2 py-0.5 rounded text-[9px] font-heading font-bold ${getColor()}`}
+    >
+      {label} {value}
+    </span>
+  );
 }

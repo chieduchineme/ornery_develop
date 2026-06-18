@@ -10,6 +10,7 @@ import { EventFeed, MatchStats, Lineups } from "./MatchPanels";
 import MatchScreenLayout from "./MatchScreenLayout";
 import { SubPanel } from "./SubPanel";
 import SpectatorReplay from "./SpectatorReplay";
+import TacticalAnalysis from "./TacticalAnalysis";
 import {
   Play, Pause, FastForward, SkipForward,
   Clock, Users, BarChart3, MessageSquare, RefreshCw,
@@ -17,7 +18,7 @@ import {
   Target, Flag
 } from "lucide-react";
 
-type ActivePanel = "events" | "stats" | "lineups";
+type ActivePanel = "events" | "stats" | "lineups" | "tactics";
 
 interface MatchLiveProps {
   snapshot: MatchSnapshot;
@@ -275,6 +276,7 @@ export default function MatchLive({
               <div className="flex bg-white dark:bg-navy-800 border-b border-gray-200 dark:border-navy-700 transition-colors duration-300">
                 {([
                   { id: "events" as ActivePanel, label: t('match.events'), icon: <MessageSquare className="w-4 h-4" /> },
+                  { id: "tactics" as ActivePanel, label: t('match.tactics'), icon: <Zap className="w-4 h-4" /> },
                   { id: "stats" as ActivePanel, label: t('match.stats'), icon: <BarChart3 className="w-4 h-4" /> },
                   { id: "lineups" as ActivePanel, label: t('match.lineups'), icon: <Users className="w-4 h-4" /> },
                 ]).map(tab => (
@@ -294,6 +296,13 @@ export default function MatchLive({
 
               <div className="flex-1 overflow-auto p-4">
                 {activePanel === "events" && <EventFeed events={importantEvents} snapshot={snapshot} feedRef={eventFeedRef} />}
+                {activePanel === "tactics" && (
+                  <TacticalAnalysis
+                    snapshot={snapshot}
+                    homeTeamColor={homeTeamColor}
+                    awayTeamColor={awayTeamColor}
+                  />
+                )}
                 {activePanel === "stats" && <MatchStats snapshot={snapshot} />}
                 {activePanel === "lineups" && <Lineups snapshot={snapshot} />}
               </div>
