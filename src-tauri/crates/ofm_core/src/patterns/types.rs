@@ -20,6 +20,11 @@ pub enum PlayerRole {
     BallCarrier,
     DecoyRunner,
     ScoringRunner,
+    Lwb,
+    Rwb,
+    Lcb,
+    Rcb,
+    Swk,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,6 +46,16 @@ pub enum MovementDirection {
     AttackNearPost,
     AttackFarPost,
     AttackCutbackZone,
+    Tuck,
+    MarkRunner,
+    StepUp,
+    SqueezeUp,
+    RecoverShape,
+    CoverChannel,
+    ShieldGoal,
+    BlockLane,
+    DoubleTeam,
+    TrackBack,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,6 +76,14 @@ pub enum BallAction {
     LongPass,
     Recycle,
     ScreenRestDefense,
+    Intercept,
+    Tackle,
+    Header,
+    Clearance,
+    BlockShot,
+    PunchClear,
+    FoulTactical,
+    CallOffsideTrap,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -165,4 +188,67 @@ pub fn instruction(
         target,
         physics_detail,
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct DefensivePlayerInstruction {
+    pub role: PlayerRole,
+    pub movement: MovementSpec,
+    pub action: BallAction,
+    pub marks: &'static str,
+    pub physics_detail: &'static str,
+}
+
+#[derive(Debug, Clone)]
+pub struct DefensivePatternPhase {
+    pub name: &'static str,
+    pub trigger: &'static str,
+    pub tempo_seconds: (f32, f32),
+    pub block_height_pct: f32,
+    pub instructions: Vec<DefensivePlayerInstruction>,
+    pub outcome: &'static str,
+}
+
+#[derive(Debug, Clone)]
+pub struct DefensivePatternForm {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub source_md: &'static str,
+    pub base_formation: &'static str,
+    pub preferred_play_style: PlayStyle,
+    pub compactness: f32,
+    pub aggression: f32,
+    pub phases: Vec<DefensivePatternPhase>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DefensiveSystemPhase {
+    pub name: &'static str,
+    pub defensive_form_id: &'static str,
+    pub tactical_purpose: &'static str,
+    pub entry_condition: &'static str,
+    pub handoff: &'static str,
+    pub weight: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct EliteDefensiveSystemDefinition {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub source_md: &'static str,
+    pub structural_idea: &'static str,
+    pub real_world_archetypes: &'static [&'static str],
+    pub base_play_style: PlayStyle,
+    pub phases: Vec<DefensiveSystemPhase>,
+    pub final_output: &'static str,
+}
+
+pub fn def_instruction(
+    role: PlayerRole,
+    movement: MovementSpec,
+    action: BallAction,
+    marks: &'static str,
+    physics_detail: &'static str,
+) -> DefensivePlayerInstruction {
+    DefensivePlayerInstruction { role, movement, action, marks, physics_detail }
 }

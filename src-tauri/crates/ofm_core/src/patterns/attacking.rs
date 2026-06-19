@@ -2,20 +2,7 @@ use rand::Rng;
 
 use engine::{MatchCommand, MatchSnapshot, PlayStyle, Side};
 
-#[derive(Debug, Clone, Copy)]
-pub enum AttackingPattern {
-    CounterAttack,
-    FastBreak,
-    PossessionBased,
-    DirectAttack,
-    WingPlay,
-    CentralAttack,
-    CrossingAttack,
-    CombinationPlay,
-    OverloadAttack,
-    SwitchOfPlay,
-    HighPressAttack,
-}
+use crate::patterns::attacking_systems;
 
 pub fn decide_attacking_commands<R: Rng>(
     snapshot: &MatchSnapshot,
@@ -27,7 +14,36 @@ pub fn decide_attacking_commands<R: Rng>(
     let goal_diff = team_goal_difference(snapshot, side);
     let minute = snapshot.current_minute;
 
-    // Prioritize play style shifts that match possession patterns.
+    // Select an elite attacking system that fits the team's play style.
+    let system = {
+        let mut candidates = attacking_systems::systems_for_play_style(play_style);
+        if candidates.is_empty() {
+            candidates = attacking_systems::all_systems();
+        }
+        let idx = rng.gen_range(0..candidates.len());
+        candidates.swap_remove(idx)
+    };
+
+    // Pick which phase of the system to execute based on match minute.
+    let phase_idx = if minute < 30 {
+        0
+    } else if minute < 65 {
+        1
+    } else {
+        2
+    };
+    let form_id = system
+        .phases
+        .get(phase_idx)
+        .map(|p| p.attacking_form_id.clone())
+        .unwrap_or_else(|| system.phases[0].attacking_form_id.clone());
+
+    commands.push(MatchCommand::SetAttackingPattern {
+        side,
+        pattern_id: form_id,
+    });
+
+    // Play style adjustments driven by match situation.
     match play_style {
         PlayStyle::Attacking | PlayStyle::HighPress | PlayStyle::Counter => {}
         PlayStyle::Possession => {
@@ -49,37 +65,15 @@ pub fn decide_attacking_commands<R: Rng>(
         _ => {}
     }
 
-    // If in possession and losing, bias toward attack patterns.
+    // Losing late — apply the system's own play style urgency.
     if goal_diff < 0 && minute >= 55 && rng.gen_bool(0.25) {
-        commands.push(match choose_attacking_pattern(snapshot, side, rng) {
-            AttackingPattern::CounterAttack | AttackingPattern::FastBreak => MatchCommand::ChangePlayStyle {
-                side,
-                play_style: PlayStyle::Counter,
-            },
-            AttackingPattern::PossessionBased | AttackingPattern::CombinationPlay => MatchCommand::ChangePlayStyle {
-                side,
-                play_style: PlayStyle::Possession,
-            },
-            AttackingPattern::DirectAttack | AttackingPattern::WingPlay | AttackingPattern::CentralAttack => {
-                MatchCommand::ChangePlayStyle {
-                    side,
-                    play_style: PlayStyle::Attacking,
-                }
-            }
-            AttackingPattern::CrossingAttack | AttackingPattern::OverloadAttack | AttackingPattern::SwitchOfPlay => {
-                MatchCommand::ChangePlayStyle {
-                    side,
-                    play_style: PlayStyle::Attacking,
-                }
-            }
-            AttackingPattern::HighPressAttack => MatchCommand::ChangePlayStyle {
-                side,
-                play_style: PlayStyle::HighPress,
-            },
+        commands.push(MatchCommand::ChangePlayStyle {
+            side,
+            play_style: system.base_play_style,
         });
     }
 
-    // In possession and already winning, keep the ball but avoid overcommitting.
+    // Winning late — keep the ball.
     if goal_diff > 0 && minute >= 70 && rng.gen_bool(0.12) {
         commands.push(MatchCommand::ChangePlayStyle {
             side,
@@ -88,31 +82,6 @@ pub fn decide_attacking_commands<R: Rng>(
     }
 
     commands
-}
-
-fn choose_attacking_pattern<R: Rng>(snapshot: &MatchSnapshot, side: Side, rng: &mut R) -> AttackingPattern {
-    let formation = team_formation(snapshot, side);
-    if formation.contains('3') && rng.gen_bool(0.45) {
-        return AttackingPattern::WingPlay;
-    }
-    if snapshot.ball_zone == engine::Zone::WideLeft || snapshot.ball_zone == engine::Zone::WideRight {
-        return AttackingPattern::CrossingAttack;
-    }
-
-    let roll = rng.gen_range(0..100);
-    match roll {
-        0..=15 => AttackingPattern::CounterAttack,
-        16..=30 => AttackingPattern::FastBreak,
-        31..=45 => AttackingPattern::PossessionBased,
-        46..=55 => AttackingPattern::DirectAttack,
-        56..=65 => AttackingPattern::WingPlay,
-        66..=75 => AttackingPattern::CentralAttack,
-        76..=80 => AttackingPattern::CrossingAttack,
-        81..=85 => AttackingPattern::CombinationPlay,
-        86..=90 => AttackingPattern::OverloadAttack,
-        91..=95 => AttackingPattern::SwitchOfPlay,
-        _ => AttackingPattern::HighPressAttack,
-    }
 }
 
 fn team_play_style(snapshot: &MatchSnapshot, side: Side) -> PlayStyle {
@@ -128,11 +97,4 @@ fn team_goal_difference(snapshot: &MatchSnapshot, side: Side) -> i8 {
         Side::Away => (snapshot.away_score, snapshot.home_score),
     };
     own as i8 - opp as i8
-}
-
-fn team_formation(snapshot: &MatchSnapshot, side: Side) -> &str {
-    match side {
-        Side::Home => &snapshot.home_team.formation,
-        Side::Away => &snapshot.away_team.formation,
-    }
 }

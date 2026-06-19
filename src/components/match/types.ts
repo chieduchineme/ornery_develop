@@ -85,6 +85,8 @@ export interface MatchSnapshot {
   home_yellows: Record<string, number>;
   away_yellows: Record<string, number>;
   sent_off: string[];
+  active_home_pattern?: string;
+  active_away_pattern?: string;
 }
 
 export interface MinuteResult {
@@ -117,6 +119,8 @@ export interface SpectatorReplayFrame {
   events: MatchEvent[];
   home_score: number;
   away_score: number;
+  active_home_pattern?: string;
+  active_away_pattern?: string;
 }
 
 export interface SpectatorReplayMetadata {

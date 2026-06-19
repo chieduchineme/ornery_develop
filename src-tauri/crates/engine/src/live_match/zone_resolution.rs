@@ -7,6 +7,37 @@ use crate::types::{Position, Side, Zone};
 use super::LiveMatchState;
 
 // ---------------------------------------------------------------------------
+// Pattern modifiers — how each attacking pattern changes zone behaviour
+// ---------------------------------------------------------------------------
+
+/// Returns (retention_bonus, advance_multiplier, press_bonus) for a pattern.
+/// retention_bonus: added to possession retention (0.0 = neutral)
+/// advance_multiplier: multiplied on zone-advance probability (1.0 = neutral)
+/// press_bonus: extra pressing strength when opposing (1.0 = neutral)
+pub(super) fn pattern_modifiers(pattern_id: &str) -> (f64, f64, f64) {
+    match pattern_id {
+        "possession_based" | "positional_play" => (0.12, 0.85, 1.05),
+        "combination_play"                      => (0.08, 0.92, 1.05),
+        "third_man_attack"                      => (0.05, 1.10, 1.00),
+        "counter_attack"                        => (-0.05, 1.35, 0.90),
+        "fast_breaks"                           => (-0.08, 1.40, 0.88),
+        "direct_attack"                         => (-0.04, 1.25, 0.92),
+        "wing_play" | "overlapping_attack"      => (0.02, 1.05, 1.02),
+        "underlapping_attack"                   => (0.03, 1.08, 1.02),
+        "central_attack"                        => (0.00, 1.10, 1.00),
+        "overload_attack"                       => (0.04, 1.08, 1.05),
+        "combination_crossing"                  => (0.03, 1.00, 1.02),
+        "crossing_variations"                   => (0.00, 1.02, 1.00),
+        "high_press_attack"                     => (-0.03, 1.15, 1.18),
+        "isolation_attack"                      => (0.00, 1.05, 1.00),
+        "rotational_attack" | "total_football"  => (0.05, 1.08, 1.05),
+        "switch_of_play"                        => (0.06, 0.95, 1.02),
+        "set_piece_attack"                      => (0.00, 0.90, 1.00),
+        _                                        => (0.00, 1.00, 1.00),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Action resolution
 // ---------------------------------------------------------------------------
 
@@ -105,9 +136,24 @@ impl LiveMatchState {
             PlayStylePhase::Midfield,
             false,
         );
-        let att_eff = att_rating * att_mod * crate::shared::home_mod(att_side, &self.config);
-        let def_eff = def_rating * def_mod * crate::shared::home_mod(def_side, &self.config);
-        let success = att_eff / (att_eff + def_eff);
+
+        // Apply pattern modifiers
+        let (att_retain, att_advance, _) = self
+            .active_pattern(att_side)
+            .map(pattern_modifiers)
+            .unwrap_or((0.0, 1.0, 1.0));
+        let (_, _, def_press) = self
+            .active_pattern(def_side)
+            .map(pattern_modifiers)
+            .unwrap_or((0.0, 1.0, 1.0));
+
+        let att_eff = att_rating * att_mod * crate::shared::home_mod(att_side, &self.config)
+            * (1.0 + att_retain);
+        let def_eff = def_rating * def_mod * crate::shared::home_mod(def_side, &self.config)
+            * def_press;
+        let base_success = att_eff / (att_eff + def_eff);
+        // att_advance > 1.0 means the pattern pushes through faster — slightly boost zone-advance chance
+        let success = (base_success * att_advance).clamp(0.05, 0.95);
 
         if rng.random_range(0.0..1.0f64) < success {
             let evt = MatchEvent::new(minute, EventType::PassCompleted, att_side, Zone::Midfield)

@@ -72,6 +72,11 @@ pub enum MatchCommand {
         player_off_id: String,
         player_on_id: String,
     },
+    /// Set the active attacking pattern for a side (driven by the patterns AI).
+    SetAttackingPattern {
+        side: Side,
+        pattern_id: String,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -143,6 +148,9 @@ pub struct MatchSnapshot {
     pub home_yellows: HashMap<String, u8>,
     pub away_yellows: HashMap<String, u8>,
     pub sent_off: HashSet<String>,
+    /// Currently active attacking pattern ids (set by the patterns AI each minute).
+    pub active_home_pattern: Option<String>,
+    pub active_away_pattern: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -207,6 +215,10 @@ pub struct LiveMatchState {
     home_set_pieces: SetPieceTakers,
     away_set_pieces: SetPieceTakers,
 
+    // Active attacking pattern ids (set by pattern AI)
+    active_home_pattern: Option<String>,
+    active_away_pattern: Option<String>,
+
     // Extra time / knockout
     allows_extra_time: bool,
 
@@ -270,6 +282,8 @@ impl LiveMatchState {
             et_second_half_stoppage: 0,
             player_conditions,
             penalty_state: PenaltyShootoutState::default(),
+            active_home_pattern: None,
+            active_away_pattern: None,
         }
     }
 
@@ -332,6 +346,21 @@ impl LiveMatchState {
                 }
                 self.do_pre_match_swap(side, &player_off_id, &player_on_id)
             }
+            MatchCommand::SetAttackingPattern { side, pattern_id } => {
+                match side {
+                    Side::Home => self.active_home_pattern = Some(pattern_id),
+                    Side::Away => self.active_away_pattern = Some(pattern_id),
+                }
+                Ok(())
+            }
+        }
+    }
+
+    /// Return the active attacking pattern id for a side.
+    pub fn active_pattern(&self, side: Side) -> Option<&str> {
+        match side {
+            Side::Home => self.active_home_pattern.as_deref(),
+            Side::Away => self.active_away_pattern.as_deref(),
         }
     }
 

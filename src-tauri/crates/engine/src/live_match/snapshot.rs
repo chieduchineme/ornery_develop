@@ -64,6 +64,8 @@ impl LiveMatchState {
             home_yellows,
             away_yellows,
             sent_off: self.sent_off.clone(),
+            active_home_pattern: self.active_home_pattern.clone(),
+            active_away_pattern: self.active_away_pattern.clone(),
         }
     }
 }

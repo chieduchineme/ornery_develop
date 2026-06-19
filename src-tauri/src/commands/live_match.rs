@@ -68,6 +68,8 @@ pub struct SpectatorReplayFrame {
     events: Vec<engine::MatchEvent>,
     home_score: u8,
     away_score: u8,
+    active_home_pattern: Option<String>,
+    active_away_pattern: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -237,7 +239,11 @@ fn build_spectator_replay_frame(
     let (home_score, away_score) = score_at_minute(snapshot, minute);
     let possession = possession_at_minute(snapshot, minute);
     let ball_zone = zone_at_minute(snapshot, minute);
-    let (ball_x, ball_y) = ball_coordinates(ball_zone, possession, minute);
+    let active_pattern = match possession {
+        engine::Side::Home => snapshot.active_home_pattern.as_deref(),
+        engine::Side::Away => snapshot.active_away_pattern.as_deref(),
+    };
+    let (ball_x, ball_y) = ball_coordinates(ball_zone, possession, minute, active_pattern);
 
     let mut players = HashMap::new();
     add_side_points(
@@ -247,6 +253,7 @@ fn build_spectator_replay_frame(
         &snapshot.home_team.players,
         &snapshot.home_bench,
         minute,
+        snapshot.active_home_pattern.as_deref(),
     );
     add_side_points(
         &mut players,
@@ -255,6 +262,7 @@ fn build_spectator_replay_frame(
         &snapshot.away_team.players,
         &snapshot.away_bench,
         minute,
+        snapshot.active_away_pattern.as_deref(),
     );
 
     SpectatorReplayFrame {
@@ -268,6 +276,8 @@ fn build_spectator_replay_frame(
         events,
         home_score,
         away_score,
+        active_home_pattern: snapshot.active_home_pattern.clone(),
+        active_away_pattern: snapshot.active_away_pattern.clone(),
     }
 }
 
@@ -278,6 +288,7 @@ fn add_side_points(
     squad: &[engine::PlayerData],
     bench: &[engine::PlayerData],
     minute: u8,
+    pattern_id: Option<&str>,
 ) {
     let mut active_players = squad
         .iter()
@@ -298,7 +309,13 @@ fn add_side_points(
     }
 
     for (index, player) in active_players.iter().take(11).enumerate() {
-        let (x, y) = player_coordinates(side, &format!("{:?}", player.position), index, minute);
+        let (x, y) = player_coordinates(
+            side,
+            &format!("{:?}", player.position),
+            index,
+            minute,
+            pattern_id,
+        );
         out.insert(
             player.id.clone(),
             SpectatorReplayPoint { x, y, active: true },
@@ -377,7 +394,12 @@ fn phase_at_minute(snapshot: &engine::MatchSnapshot, minute: u8) -> engine::Matc
     }
 }
 
-fn ball_coordinates(zone: engine::Zone, possession: engine::Side, minute: u8) -> (f64, f64) {
+fn ball_coordinates(
+    zone: engine::Zone,
+    possession: engine::Side,
+    minute: u8,
+    pattern_id: Option<&str>,
+) -> (f64, f64) {
     let x = match zone {
         engine::Zone::HomeBox => 12.0,
         engine::Zone::HomeDefense => 28.0,
@@ -385,27 +407,56 @@ fn ball_coordinates(zone: engine::Zone, possession: engine::Side, minute: u8) ->
         engine::Zone::AwayDefense => 72.0,
         engine::Zone::AwayBox => 88.0,
     };
-    let drift = (((minute as u16 * 37) % 34) as f64) - 17.0;
+    // Pattern-aware lateral spread: wide patterns pull ball wider, central keep it tight.
+    let y_scale = match pattern_id {
+        Some("wing_play") | Some("overlapping_attack") | Some("underlapping_attack")
+        | Some("combination_crossing") | Some("crossing_variations") | Some("overload_attack")
+        | Some("switch_of_play") => 1.6,
+        Some("central_attack") | Some("isolation_attack") | Some("positional_play")
+        | Some("possession_based") => 0.6,
+        Some("high_press_attack") | Some("fast_breaks") | Some("counter_attack") => 1.0,
+        _ => 1.0,
+    };
+    let drift = ((((minute as u16 * 37) % 34) as f64) - 17.0) * y_scale;
     let y = if possession == engine::Side::Home {
         50.0 + drift
     } else {
         50.0 - drift
     }
-    .clamp(18.0, 82.0);
+    .clamp(12.0, 88.0);
     (x, y)
 }
 
-fn player_coordinates(side: engine::Side, position: &str, index: usize, minute: u8) -> (f64, f64) {
+fn player_coordinates(
+    side: engine::Side,
+    position: &str,
+    index: usize,
+    minute: u8,
+    pattern_id: Option<&str>,
+) -> (f64, f64) {
+    // Base x per position — adjust depth based on pattern
+    let x_push: f64 = match pattern_id {
+        Some("high_press_attack") => 6.0,   // defenders push up
+        Some("counter_attack") | Some("fast_breaks") => -4.0, // hold shape, hit on break
+        Some("possession_based") | Some("positional_play") => 3.0,  // compact but advanced
+        _ => 0.0,
+    };
     let (base_x, spread) = match (side, position) {
         (engine::Side::Home, "Goalkeeper") => (8.0, 0.0),
-        (engine::Side::Home, "Defender") => (24.0, 18.0),
-        (engine::Side::Home, "Midfielder") => (46.0, 16.0),
-        (engine::Side::Home, "Forward") => (70.0, 14.0),
+        (engine::Side::Home, "Defender")   => ((24.0 + x_push).clamp(14.0, 40.0), 18.0),
+        (engine::Side::Home, "Midfielder") => ((46.0 + x_push * 0.5).clamp(30.0, 58.0), 16.0),
+        (engine::Side::Home, "Forward")    => ((70.0 + x_push * 0.3).clamp(55.0, 82.0), 14.0),
         (engine::Side::Away, "Goalkeeper") => (92.0, 0.0),
-        (engine::Side::Away, "Defender") => (76.0, 18.0),
-        (engine::Side::Away, "Midfielder") => (54.0, 16.0),
-        (engine::Side::Away, "Forward") => (30.0, 14.0),
+        (engine::Side::Away, "Defender")   => ((76.0 - x_push).clamp(60.0, 86.0), 18.0),
+        (engine::Side::Away, "Midfielder") => ((54.0 - x_push * 0.5).clamp(42.0, 70.0), 16.0),
+        (engine::Side::Away, "Forward")    => ((30.0 - x_push * 0.3).clamp(18.0, 45.0), 14.0),
         _ => (50.0, 15.0),
+    };
+    // Widen spread for wing patterns, compress for central
+    let spread = match pattern_id {
+        Some("wing_play") | Some("overlapping_attack") | Some("overload_attack") => spread * 1.35,
+        Some("central_attack") | Some("positional_play") => spread * 0.65,
+        _ => spread,
     };
     let row_index = index % 5;
     let movement = ((((minute as usize + index * 7) % 11) as f64) - 5.0) * 0.65;

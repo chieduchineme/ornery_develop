@@ -239,6 +239,8 @@ export default function SpectatorReplay({
             <TacticalIndicator
               possession={targetFrame.possession}
               ballZone={targetFrame.ball_zone}
+              activeHomePattern={targetFrame.active_home_pattern}
+              activeAwayPattern={targetFrame.active_away_pattern}
             />
           </div>
         </div>
@@ -425,11 +427,17 @@ function easeInOut(progress: number): number {
 interface TacticalIndicatorProps {
   possession: "Home" | "Away";
   ballZone: string;
+  activeHomePattern?: string;
+  activeAwayPattern?: string;
 }
 
-function TacticalIndicator({ possession, ballZone }: TacticalIndicatorProps) {
-  const isAttacking = ballZone.includes("attacking");
-  const defendingZone = ballZone.includes("defensive");
+function TacticalIndicator({ possession, ballZone, activeHomePattern, activeAwayPattern }: TacticalIndicatorProps) {
+  const isAttacking = ballZone.includes("attacking") || ballZone === "AwayBox" || ballZone === "AwayDefense";
+  const defendingZone = ballZone === "HomeBox" || ballZone === "HomeDefense";
+  const activePattern = possession === "Home" ? activeHomePattern : activeAwayPattern;
+  const patternLabel = activePattern
+    ? activePattern.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    : isAttacking ? "Attacking" : defendingZone ? "Defending" : "Midfield";
 
   return (
     <div className="flex items-center gap-2 text-[10px]">
@@ -438,9 +446,7 @@ function TacticalIndicator({ possession, ballZone }: TacticalIndicatorProps) {
       ) : (
         <Shield className="w-3 h-3 text-red-300" />
       )}
-      <span className="text-white/80">
-        {isAttacking ? "Attacking" : defendingZone ? "Defending" : "Midfield"}
-      </span>
+      <span className="text-white/80">{patternLabel}</span>
     </div>
   );
 }

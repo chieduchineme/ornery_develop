@@ -178,7 +178,17 @@ impl LiveMatchState {
         let def_side = poss_side.opposite();
         let mid_att = self.effective_midfield(poss_side);
         let mid_def = self.effective_midfield(def_side);
-        let retain = mid_att / (mid_att + mid_def);
+        let (retention_bonus, _, _) = self
+            .active_pattern(poss_side)
+            .map(super::zone_resolution::pattern_modifiers)
+            .unwrap_or((0.0, 1.0, 1.0));
+        let (_, _, press_bonus) = self
+            .active_pattern(def_side)
+            .map(super::zone_resolution::pattern_modifiers)
+            .unwrap_or((0.0, 1.0, 1.0));
+        let retain = ((mid_att / (mid_att + mid_def)) + retention_bonus)
+            .clamp(0.05, 0.95)
+            / press_bonus.max(1.0);
         if rng.random_range(0.0..1.0f64) > retain {
             self.possession = def_side;
             self.ball_zone = Zone::Midfield;

@@ -6,12 +6,16 @@ mod attacking;
 mod defensive;
 pub mod attacking_forms;
 pub mod attacking_systems;
+pub mod defensive_forms;
+pub mod defensive_systems;
 pub mod types;
 
 pub use attacking::AttackingPattern;
 pub use defensive::DefensivePattern;
 pub use attacking_forms::all_forms;
 pub use attacking_systems::all_systems;
+pub use defensive_forms::all_forms as all_defensive_forms;
+pub use defensive_systems::all_systems as all_defensive_systems;
 
 pub fn decide_match_commands<R: Rng>(
     match_state: &LiveMatchState,

@@ -480,6 +480,30 @@ export function getMovementInstruction(
 /**
  * Analyze match state and return primary pattern description
  */
+// Map from Rust pattern IDs → ATTACKING_PATTERNS keys
+const PATTERN_ID_TO_KEY: Record<string, string> = {
+  counter_attack: "Counter-Attack",
+  fast_breaks: "Fast Break",
+  possession_based: "Possession-Based",
+  direct_attack: "Direct Attack",
+  wing_play: "Wing Play",
+  central_attack: "Central Attack",
+  combination_crossing: "Crossing Attack",
+  combination_play: "Combination Play",
+  overload_attack: "Overload Attack",
+  switch_of_play: "Switch of Play",
+  high_press_attack: "High Press",
+  positional_play: "Positional Play",
+  rotational_attack: "Rotational Attack",
+  total_football: "Total Football",
+  overlapping_attack: "Wing Play",
+  underlapping_attack: "Wing Play",
+  isolation_attack: "Isolation Attack",
+  set_piece_attack: "Set Piece",
+  third_man_attack: "Third Man Run",
+  crossing_variations: "Crossing Attack",
+};
+
 export function analyzePrimaryPattern(params: {
   homePlayStyle: string;
   awayPlayStyle: string;
@@ -489,6 +513,8 @@ export function analyzePrimaryPattern(params: {
   awayPossession_pct: number;
   formation_home: string;
   formation_away: string;
+  activeHomePattern?: string;
+  activeAwayPattern?: string;
 }): {
   home: string;
   away: string;
@@ -498,18 +524,32 @@ export function analyzePrimaryPattern(params: {
   const isHomeAttacking = params.possession === "Home";
   const isAwayAttacking = params.possession === "Away";
 
-  const homePattern = isHomeAttacking
-    ? getAttackingPattern(params.homePlayStyle, true, params.ballZone, params.homePossession_pct)
-    : getDefensivePattern(params.homePlayStyle, false, params.ballZone, params.homePossession_pct);
+  // Prefer the live engine pattern id over inferring from play style
+  const homeLookupKey = params.activeHomePattern
+    ? PATTERN_ID_TO_KEY[params.activeHomePattern]
+    : undefined;
+  const awayLookupKey = params.activeAwayPattern
+    ? PATTERN_ID_TO_KEY[params.activeAwayPattern]
+    : undefined;
 
-  const awayPattern = isAwayAttacking
-    ? getAttackingPattern(params.awayPlayStyle, true, params.ballZone, params.awayPossession_pct)
-    : getDefensivePattern(params.awayPlayStyle, false, params.ballZone, params.awayPossession_pct);
+  const homePattern = (homeLookupKey && ATTACKING_PATTERNS[homeLookupKey])
+    ? ATTACKING_PATTERNS[homeLookupKey]
+    : isHomeAttacking
+      ? getAttackingPattern(params.homePlayStyle, true, params.ballZone, params.homePossession_pct)
+      : getDefensivePattern(params.homePlayStyle, false, params.ballZone, params.homePossession_pct);
+
+  const awayPattern = (awayLookupKey && ATTACKING_PATTERNS[awayLookupKey])
+    ? ATTACKING_PATTERNS[awayLookupKey]
+    : isAwayAttacking
+      ? getAttackingPattern(params.awayPlayStyle, true, params.ballZone, params.awayPossession_pct)
+      : getDefensivePattern(params.awayPlayStyle, false, params.ballZone, params.awayPossession_pct);
 
   const homeDesc = generateTacticalDescription(
     "Home",
     isHomeAttacking,
-    params.homePlayStyle,
+    params.activeHomePattern
+      ? (homeLookupKey ?? params.homePlayStyle)
+      : params.homePlayStyle,
     params.formation_home,
     homePattern,
     params.ballZone
@@ -518,7 +558,9 @@ export function analyzePrimaryPattern(params: {
   const awayDesc = generateTacticalDescription(
     "Away",
     isAwayAttacking,
-    params.awayPlayStyle,
+    params.activeAwayPattern
+      ? (awayLookupKey ?? params.awayPlayStyle)
+      : params.awayPlayStyle,
     params.formation_away,
     awayPattern,
     params.ballZone
