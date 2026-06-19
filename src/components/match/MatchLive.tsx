@@ -44,7 +44,12 @@ export default function MatchLive({
   const [activePanel, setActivePanel] = useState<ActivePanel>("events");
   const [isRunning, setIsRunning] = useState(true);
   const [showSubPanel, setShowSubPanel] = useState(false);
+  const [displaySeconds, setDisplaySeconds] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const secondTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const secondStartRef = useRef<number>(0);
+  const lastMinuteRef = useRef<number>(snapshot.current_minute);
+  const savedDisplaySecondsRef = useRef<number>(0);
   const eventFeedRef = useRef<HTMLDivElement>(null);
   // Track phases we've already signaled to avoid double-firing
   const signaledRef = useRef<Set<string>>(new Set());
@@ -53,6 +58,43 @@ export default function MatchLive({
   const awayTeamColor = gameState.teams.find(t => t.id === snapshot.away_team.id)?.colors?.primary || "#6366f1";
 
   const isFinished = snapshot.phase === "Finished";
+  const matchTimeDisplay = `${String(snapshot.current_minute).padStart(2, "0")}:${String(displaySeconds).padStart(2, "0")}`;
+
+  const isLiveClockRunning = isRunning && speed !== "paused" && speed !== "instant" && !isFinished;
+
+  useEffect(() => {
+    if (secondTickRef.current !== null) {
+      clearInterval(secondTickRef.current);
+      secondTickRef.current = null;
+    }
+
+    if (isLiveClockRunning === false) {
+      return;
+    }
+
+    if (snapshot.current_minute === lastMinuteRef.current) {
+      secondStartRef.current = performance.now() - savedDisplaySecondsRef.current * 1000;
+    } else {
+      lastMinuteRef.current = snapshot.current_minute;
+      savedDisplaySecondsRef.current = 0;
+      setDisplaySeconds(0);
+      secondStartRef.current = performance.now();
+    }
+
+    secondTickRef.current = setInterval(() => {
+      const elapsedSeconds = Math.floor((performance.now() - secondStartRef.current) / 1000);
+      const seconds = Math.min(59, Math.max(0, elapsedSeconds));
+      savedDisplaySecondsRef.current = seconds;
+      setDisplaySeconds(seconds);
+    }, 250);
+
+    return () => {
+      if (secondTickRef.current !== null) {
+        clearInterval(secondTickRef.current);
+        secondTickRef.current = null;
+      }
+    };
+  }, [isLiveClockRunning, snapshot.current_minute]);
 
   // Step the match forward one minute
   const stepMatch = useCallback(async () => {
@@ -215,7 +257,7 @@ export default function MatchLive({
                   <span className="text-xs font-heading uppercase tracking-widest text-accent-700 dark:text-accent-400">
                     {phaseLabel(snapshot.phase, t)}
                   </span>
-                  <span className="text-2xl font-heading font-bold text-gray-500 dark:text-gray-400">{snapshot.current_minute}'</span>
+                  <span className="text-2xl font-heading font-bold text-gray-500 dark:text-gray-400">{matchTimeDisplay}</span>
                 </div>
                 <span className="text-4xl font-heading font-bold text-gray-900 dark:text-white tabular-nums">{snapshot.away_score}</span>
               </div>
@@ -238,7 +280,7 @@ export default function MatchLive({
 
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-              <span className="text-sm font-heading text-gray-500 dark:text-gray-400 tabular-nums w-8">{snapshot.current_minute}'</span>
+              <span className="text-sm font-heading text-gray-500 dark:text-gray-400 tabular-nums w-12">{matchTimeDisplay}</span>
             </div>
           </div>
 

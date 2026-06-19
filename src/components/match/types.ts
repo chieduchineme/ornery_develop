@@ -231,9 +231,9 @@ export function getTeamTalkOptions(t: TFunction): TeamTalkOption[] {
 
 export const SPEED_MS: Record<SimSpeed, number> = {
   paused: 0,
-  slow: 2000,
-  normal: 800,
-  fast: 200,
+  slow: 120000,
+  normal: 60000,
+  fast: 30000,
   instant: 10,
 };
 
