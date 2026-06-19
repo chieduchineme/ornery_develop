@@ -1,0 +1,161 @@
+use engine::PlayStyle;
+use crate::patterns::types::{
+    AttackingPatternForm, PatternPhase, BallAction, Intensity,
+    MovementDirection, PlayerRole, instruction, movement,
+};
+
+pub fn form() -> AttackingPatternForm {
+    AttackingPatternForm {
+        id: "central_attack",
+        name: "Central Attack",
+        source_md: "Central-Attacks_patterns.md",
+        base_formation: "4-3-3",
+        preferred_play_style: PlayStyle::Attacking,
+        risk: 0.50,
+        reward: 0.65,
+        phases: vec![
+            PatternPhase {
+                name: "Vertical Line-Break",
+                trigger: "DM receives between lines, opponent midfield compact",
+                tempo_seconds: (3.0, 6.0),
+                width_m: 38.0,
+                depth_m: 32.0,
+                instructions: vec![
+                    instruction(
+                        PlayerRole::Dm,
+                        movement(MovementDirection::Drop, 5.0, 0.0, 1.5, Intensity::Jog),
+                        BallAction::Receive,
+                        "between CBs or just ahead of defensive line",
+                        "Drops into pocket, scans before receiving; body angle open to play forward",
+                    ),
+                    instruction(
+                        PlayerRole::Lcm,
+                        movement(MovementDirection::DiagonalRun, 12.0, 0.5, 2.5, Intensity::Accelerate),
+                        BallAction::BouncePass,
+                        "left half-space between lines",
+                        "Checks short then lays off first-touch; draws pressure to free RCM",
+                    ),
+                    instruction(
+                        PlayerRole::Rcm,
+                        movement(MovementDirection::BlindsideRun, 18.0, 1.0, 3.0, Intensity::Sprint),
+                        BallAction::None,
+                        "right half-space high",
+                        "Stays high initially, then blindside run behind defensive line on DM's pass",
+                    ),
+                    instruction(
+                        PlayerRole::St,
+                        movement(MovementDirection::Drop, 10.0, 0.0, 2.0, Intensity::Jog),
+                        BallAction::Layoff,
+                        "top of penalty area",
+                        "Drops to pull CB out of position; one-touch layoff to arriving CM",
+                    ),
+                    instruction(
+                        PlayerRole::Lw,
+                        movement(MovementDirection::DriftInside, 14.0, 1.5, 3.0, Intensity::Accelerate),
+                        BallAction::None,
+                        "left channel, converging central",
+                        "Inverts to create central overload; distorts defensive shape left",
+                    ),
+                    instruction(
+                        PlayerRole::Rw,
+                        movement(MovementDirection::DriftInside, 14.0, 1.5, 3.0, Intensity::Accelerate),
+                        BallAction::None,
+                        "right channel, converging central",
+                        "Mirrors LW inversion; all five attacking players converge centrally",
+                    ),
+                ],
+                outcome: "Through ball between CBs to ST run, or CM arrives into shooting zone",
+            },
+            PatternPhase {
+                name: "False 9 Central Disruption",
+                trigger: "ST drops deep, CBs hesitate — CMs exploit space behind",
+                tempo_seconds: (2.5, 5.0),
+                width_m: 40.0,
+                depth_m: 28.0,
+                instructions: vec![
+                    instruction(
+                        PlayerRole::St,
+                        movement(MovementDirection::Drop, 15.0, 0.0, 2.5, Intensity::Jog),
+                        BallAction::Receive,
+                        "deep between midfield and defensive lines",
+                        "Draws one or both CBs forward; creates gap behind defensive line",
+                    ),
+                    instruction(
+                        PlayerRole::Lcm,
+                        movement(MovementDirection::BlindsideRun, 20.0, 1.5, 3.0, Intensity::Explosive),
+                        BallAction::None,
+                        "space vacated behind CB line",
+                        "Exploits gap left by advancing CB; times run to stay onside",
+                    ),
+                    instruction(
+                        PlayerRole::Rcm,
+                        movement(MovementDirection::DiagonalRun, 18.0, 1.5, 3.0, Intensity::Sprint),
+                        BallAction::None,
+                        "opposite central channel high",
+                        "Second wave run; ensures both CM lanes are attacked simultaneously",
+                    ),
+                    instruction(
+                        PlayerRole::Lw,
+                        movement(MovementDirection::DriftInside, 16.0, 0.5, 3.0, Intensity::Accelerate),
+                        BallAction::None,
+                        "central zone left of ST",
+                        "Inverts toward goal to create 5-player central overload",
+                    ),
+                    instruction(
+                        PlayerRole::Rw,
+                        movement(MovementDirection::DriftInside, 16.0, 0.5, 3.0, Intensity::Accelerate),
+                        BallAction::None,
+                        "central zone right of ST",
+                        "Mirrors LW; both wingers become second strikers in central overload",
+                    ),
+                ],
+                outcome: "ST lays off to arriving CM for shot, or CM runs through on goal",
+            },
+            PatternPhase {
+                name: "Half-Space Central Attack",
+                trigger: "DM plays to CM in half-space with forward's run timed",
+                tempo_seconds: (2.0, 4.5),
+                width_m: 46.0,
+                depth_m: 30.0,
+                instructions: vec![
+                    instruction(
+                        PlayerRole::Dm,
+                        movement(MovementDirection::Hold, 0.0, 0.0, 2.0, Intensity::Walk),
+                        BallAction::ThroughBall,
+                        "LCM in half-space",
+                        "Plays diagonal into left half-space; disguises pass direction with body shape",
+                    ),
+                    instruction(
+                        PlayerRole::Lcm,
+                        movement(MovementDirection::DiagonalRun, 10.0, 0.5, 2.0, Intensity::Accelerate),
+                        BallAction::Receive,
+                        "left half-space between lines",
+                        "Receives on back foot, turns quickly; half-space angle creates shooting lane",
+                    ),
+                    instruction(
+                        PlayerRole::St,
+                        movement(MovementDirection::AttackNearPost, 8.0, 1.5, 2.0, Intensity::Sprint),
+                        BallAction::None,
+                        "near post / penalty area",
+                        "Pins CBs with near-post run; occupies both CBs preventing CM tracking",
+                    ),
+                    instruction(
+                        PlayerRole::Rcm,
+                        movement(MovementDirection::AttackCutbackZone, 20.0, 1.0, 3.0, Intensity::Sprint),
+                        BallAction::Shoot,
+                        "penalty spot",
+                        "Arrives penalty spot for cutback or second pass; primary shooting option",
+                    ),
+                    instruction(
+                        PlayerRole::Rw,
+                        movement(MovementDirection::DriftWide, 5.0, 0.0, 3.0, Intensity::Jog),
+                        BallAction::None,
+                        "wide right",
+                        "Stays wide to stretch defense; stops FB from sliding across to cover",
+                    ),
+                ],
+                outcome: "Through ball to ST, cutback to RCM, or LCM shoots from half-space",
+            },
+        ],
+    }
+}

@@ -1,0 +1,161 @@
+use engine::PlayStyle;
+use crate::patterns::types::{
+    AttackingPatternForm, PatternPhase, BallAction, Intensity,
+    MovementDirection, PlayerRole, instruction, movement,
+};
+
+pub fn form() -> AttackingPatternForm {
+    AttackingPatternForm {
+        id: "wing_play",
+        name: "Wing Play",
+        source_md: "Wing-Play_pattern.md",
+        base_formation: "4-3-3",
+        preferred_play_style: PlayStyle::Attacking,
+        risk: 0.45,
+        reward: 0.70,
+        phases: vec![
+            PatternPhase {
+                name: "Classic Overlap",
+                trigger: "Ball reaches winger in wide area with fullback behind",
+                tempo_seconds: (3.0, 7.0),
+                width_m: 62.0,
+                depth_m: 30.0,
+                instructions: vec![
+                    instruction(
+                        PlayerRole::Lw,
+                        movement(MovementDirection::DriftWide, 3.0, 0.0, 1.5, Intensity::Jog),
+                        BallAction::Receive,
+                        "wide channel near touchline",
+                        "First touch forward, body open to fix fullback in 1v1 duel",
+                    ),
+                    instruction(
+                        PlayerRole::Lb,
+                        movement(MovementDirection::Overlap, 28.0, 0.5, 4.0, Intensity::Sprint),
+                        BallAction::None,
+                        "outside channel beyond LW",
+                        "Explosive diagonal run outside LW, creates 2v1; timing starts as LW receives",
+                    ),
+                    instruction(
+                        PlayerRole::Lcm,
+                        movement(MovementDirection::DiagonalRun, 18.0, 1.0, 3.5, Intensity::Accelerate),
+                        BallAction::None,
+                        "half-space edge of box",
+                        "Arrives into cutback zone as delivery is made; stays in blind spot of CB",
+                    ),
+                    instruction(
+                        PlayerRole::St,
+                        movement(MovementDirection::AttackNearPost, 12.0, 2.0, 2.5, Intensity::Sprint),
+                        BallAction::None,
+                        "near post",
+                        "Near-post dart pins inside CB, prevents defensive collapse toward wing",
+                    ),
+                    instruction(
+                        PlayerRole::Rw,
+                        movement(MovementDirection::AttackFarPost, 20.0, 2.5, 3.5, Intensity::Accelerate),
+                        BallAction::None,
+                        "far post",
+                        "Diagonal run to far post covers second ball; arrives 0.5s after cross",
+                    ),
+                    instruction(
+                        PlayerRole::Dm,
+                        movement(MovementDirection::Hold, 0.0, 0.0, 7.0, Intensity::Walk),
+                        BallAction::ScreenRestDefense,
+                        "top of penalty D",
+                        "Holds top-of-D position; covers rebound zone and shields against counter",
+                    ),
+                ],
+                outcome: "Cross into near post (ST), penalty spot (LCM), or far post (RW); or cutback to LCM",
+            },
+            PatternPhase {
+                name: "Underlap Wide",
+                trigger: "Winger holds width, fullback or CM makes inside channel run",
+                tempo_seconds: (2.5, 5.0),
+                width_m: 58.0,
+                depth_m: 28.0,
+                instructions: vec![
+                    instruction(
+                        PlayerRole::Lw,
+                        movement(MovementDirection::DriftWide, 2.0, 0.0, 1.0, Intensity::Walk),
+                        BallAction::Carry,
+                        "touchline — freeze defender",
+                        "Delays pass deliberately, ball at feet, freezes fullback; creates underlap window",
+                    ),
+                    instruction(
+                        PlayerRole::Lcm,
+                        movement(MovementDirection::Underlap, 22.0, 0.8, 3.2, Intensity::Sprint),
+                        BallAction::None,
+                        "half-space behind defensive line",
+                        "Inside-channel run behind LW; enters space between opposing CB and FB",
+                    ),
+                    instruction(
+                        PlayerRole::Lb,
+                        movement(MovementDirection::Advance, 15.0, 0.5, 3.0, Intensity::Accelerate),
+                        BallAction::None,
+                        "overlap option outside LW",
+                        "Secondary overlap run provides dummy option; stretches opposing back line",
+                    ),
+                    instruction(
+                        PlayerRole::St,
+                        movement(MovementDirection::AttackNearPost, 10.0, 2.0, 2.0, Intensity::Sprint),
+                        BallAction::None,
+                        "near post",
+                        "Near-post run occupies CBs, prevents tracking LCM's underlapping run",
+                    ),
+                    instruction(
+                        PlayerRole::Rw,
+                        movement(MovementDirection::AttackFarPost, 22.0, 2.5, 3.5, Intensity::Sprint),
+                        BallAction::None,
+                        "far post",
+                        "Far-post diagonal; arrives if shot is blocked or low cross is played across",
+                    ),
+                ],
+                outcome: "Slip pass to LCM in half-space for low shot or cutback; or cross to ST",
+            },
+            PatternPhase {
+                name: "Double Wing Attack",
+                trigger: "Both wings advanced simultaneously, ST central",
+                tempo_seconds: (4.0, 8.0),
+                width_m: 65.0,
+                depth_m: 35.0,
+                instructions: vec![
+                    instruction(
+                        PlayerRole::Lw,
+                        movement(MovementDirection::Advance, 20.0, 0.0, 3.5, Intensity::Sprint),
+                        BallAction::Dribble,
+                        "left wing channel",
+                        "Drives toward byline, forcing opposing FB backward; first touch sets direction",
+                    ),
+                    instruction(
+                        PlayerRole::Rw,
+                        movement(MovementDirection::Advance, 20.0, 0.0, 3.5, Intensity::Sprint),
+                        BallAction::None,
+                        "right wing channel",
+                        "Mirrors LW run on opposite flank; both wings stretch defense to maximum width",
+                    ),
+                    instruction(
+                        PlayerRole::St,
+                        movement(MovementDirection::Hold, 5.0, 1.0, 4.0, Intensity::Jog),
+                        BallAction::None,
+                        "central penalty area",
+                        "Central anchorage; shuffles to near or far post based on delivery side",
+                    ),
+                    instruction(
+                        PlayerRole::Lcm,
+                        movement(MovementDirection::AttackCutbackZone, 18.0, 2.0, 3.0, Intensity::Accelerate),
+                        BallAction::Shoot,
+                        "penalty spot",
+                        "Arrives penalty spot 0.5s after cross; positioned for first-time shot",
+                    ),
+                    instruction(
+                        PlayerRole::Rcm,
+                        movement(MovementDirection::DiagonalRun, 16.0, 2.0, 3.0, Intensity::Accelerate),
+                        BallAction::None,
+                        "opposite half-space",
+                        "Second-ball crash to opposite half-space from cross; covers rebound",
+                    ),
+                ],
+                outcome: "Cross from either wing into overloaded box; ST near post, CM penalty spot, opposite winger far post",
+            },
+        ],
+    }
+}
