@@ -24,6 +24,94 @@ const HOME_REPLAY_COLOR = "#2563eb";
 const AWAY_REPLAY_COLOR = "#dc2626";
 const ANIMATION_MS = 700;
 
+// ── Continuous match-animation constants ──────────────────────────────────────
+// One full press-and-retreat cycle per team (ms). Forwards lead, defenders follow.
+const MATCH_CYCLE_MS = 5400;
+// Ball lateral swing period (ms) — simulates passing across the pitch.
+const BALL_SWING_MS = 1600;
+// How many ball-trail snapshots to keep.
+const TRAIL_MAX = 10;
+// Minimum ms between trail snapshots (lower = smoother trail, more memory).
+const TRAIL_INTERVAL_MS = 70;
+
+// How far each position line advances during a press wave (in SVG pitch units, 0-100 scale).
+// Defenders push up 4 units; forwards up to 12; GK stays almost fixed.
+const POSITION_ANIM: Record<string, { amp: number; phaseOffset: number }> = {
+  Goalkeeper: { amp: 0.9,  phaseOffset: 0.00 },
+  Defender:   { amp: 4.2,  phaseOffset: 0.10 },
+  Midfielder: { amp: 8.0,  phaseOffset: 0.20 },
+  Forward:    { amp: 12.0, phaseOffset: 0.29 },
+};
+
+/**
+ * Returns the animated dx/dy offset for a single player.
+ * The possessing team advances with a wave rippling front→back.
+ * The defending team retreats with a smaller wave (they compact then step up).
+ */
+function playerAnimOffset(
+  position: string,
+  side: "Home" | "Away",
+  playerIndex: number,
+  possession: "Home" | "Away",
+  clock: number,
+): { dx: number; dy: number } {
+  const params = POSITION_ANIM[position] ?? POSITION_ANIM.Defender;
+  const isPossessing = side === possession;
+
+  // Individual stagger inside a line so players don't move as a wall
+  const individualPhase = (playerIndex % 5) * 0.045;
+  const totalPhase = params.phaseOffset + individualPhase;
+  const t = ((clock / MATCH_CYCLE_MS) + totalPhase) % 1;
+
+  // Wave shape: smooth advance over 58% of cycle, linear retreat over 42%.
+  // This gives the "press then reset" feel — advance is smooth, retreat is quicker.
+  const PEAK = 0.58;
+  const peakAmp = Math.sin(Math.PI * 0.82); // value at peak of the advance curve
+  const wave =
+    t < PEAK
+      ? Math.sin((t / PEAK) * Math.PI * 0.82)
+      : peakAmp * (1 - (t - PEAK) / (1 - PEAK));
+
+  // Possessing team attacks; defending team compacts inward (smaller, opposite wave).
+  const direction = side === "Home" ? 1 : -1;
+  const amp = isPossessing ? params.amp : params.amp * 0.26;
+  const sign = isPossessing ? 1 : -1; // defenders retreat as attackers advance
+  const dx = direction * sign * wave * amp;
+
+  // Organic lateral micro-drift — each player oscillates at a slightly different rate.
+  const latAmp = 0.85 + (playerIndex % 3) * 0.35;
+  const latFreq = 0.55 + playerIndex * 0.09;
+  const dy = Math.sin((clock / 2400) * latFreq * Math.PI * 2 + playerIndex * 0.95) * latAmp;
+
+  return { dx, dy };
+}
+
+/**
+ * Returns the animated ball dx/dy on top of the frame's interpolated position.
+ * Ball advances with the possession team (forward line amplitude) and swings
+ * laterally to simulate passes being played across the pitch.
+ */
+function ballAnimOffset(
+  possession: "Home" | "Away",
+  clock: number,
+): { dx: number; dy: number } {
+  const PEAK = 0.58;
+  const peakAmp = Math.sin(Math.PI * 0.82);
+  const t = (clock / MATCH_CYCLE_MS) % 1;
+  const wave =
+    t < PEAK
+      ? Math.sin((t / PEAK) * Math.PI * 0.82)
+      : peakAmp * (1 - (t - PEAK) / (1 - PEAK));
+
+  const direction = possession === "Home" ? 1 : -1;
+  const dx = direction * wave * 9.0;
+
+  // Lateral swing at a different period — looks like the ball being played wide then back.
+  const dy = Math.sin((clock / BALL_SWING_MS) * Math.PI * 2) * 5.5;
+
+  return { dx, dy };
+}
+
 export default function SpectatorReplay({
   snapshot,
   homeTeamColor: _homeTeamColor,
@@ -38,6 +126,14 @@ export default function SpectatorReplay({
   const [visualFrame, setVisualFrame] = useState<SpectatorReplayFrame>(() => buildFallbackFrame(snapshot));
   const visualFrameRef = useRef(visualFrame);
   const animationRef = useRef<number | null>(null);
+
+  // Continuous match animation clock (drives player wave + ball swing)
+  const [matchClock, setMatchClock] = useState(0);
+  const matchClockRef = useRef(0);
+  const contAnimRef = useRef<number | null>(null);
+  // Ball trail: recent animated positions for the fading path
+  const ballTrailRef = useRef<{ x: number; y: number }[]>([]);
+  const trailTickRef = useRef(0);
   const chunkDuration = metadata?.chunk_duration_minutes || 5;
   const maxMinute = Math.max(snapshot.current_minute, 1);
   const chunkNumber = Math.floor(selectedMinute / chunkDuration);
@@ -136,6 +232,22 @@ export default function SpectatorReplay({
     };
   }, [targetFrame]);
 
+  // Drive the continuous match-animation clock independently of frame scrubbing.
+  useEffect(() => {
+    let prev: number | null = null;
+    const tick = (now: number) => {
+      const dt = prev !== null ? Math.min(now - prev, 50) : 16;
+      prev = now;
+      matchClockRef.current += dt;
+      setMatchClock(matchClockRef.current);
+      contAnimRef.current = requestAnimationFrame(tick);
+    };
+    contAnimRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (contAnimRef.current !== null) cancelAnimationFrame(contAnimRef.current);
+    };
+  }, []);
+
   const playersById = useMemo(() => {
     const result: Record<string, SpectatorReplayPlayer> = {};
     for (const player of metadata?.players || []) result[player.id] = player;
@@ -215,18 +327,40 @@ export default function SpectatorReplay({
               <Loader2 className="w-7 h-7 animate-spin" />
             </div>
           )}
-          <svg
-            viewBox={`0 0 ${PITCH_WIDTH} ${PITCH_HEIGHT}`}
-            className="absolute inset-0 h-full w-full"
-            role="img"
-            aria-label={t("match.spectatorMode")}
-          >
-            <PitchMarkings />
-            <ReplayBallTrail frame={visualFrame} />
-            <ReplayPlayers frame={visualFrame} playersById={playersById} />
-            <circle cx={visualFrame.ball_x} cy={visualFrame.ball_y} r="1.6" fill="#ffffff" stroke="#111827" strokeWidth="0.4" />
-            <circle cx={visualFrame.ball_x} cy={visualFrame.ball_y} r="3.4" fill="none" stroke="#ffffff" strokeOpacity="0.28" strokeWidth="0.7" />
-          </svg>
+          {(() => {
+            // Compute animated ball position from frame base + wave offset.
+            const bOff = ballAnimOffset(visualFrame.possession, matchClock);
+            const animBallX = Math.min(95, Math.max(5, visualFrame.ball_x + bOff.dx));
+            const animBallY = Math.min(92, Math.max(8, visualFrame.ball_y + bOff.dy));
+
+            // Update ball trail every TRAIL_INTERVAL_MS.
+            if (matchClock - trailTickRef.current >= TRAIL_INTERVAL_MS) {
+              trailTickRef.current = matchClock;
+              ballTrailRef.current = [
+                ...ballTrailRef.current.slice(-(TRAIL_MAX - 1)),
+                { x: animBallX, y: animBallY },
+              ];
+            }
+
+            return (
+              <svg
+                viewBox={`0 0 ${PITCH_WIDTH} ${PITCH_HEIGHT}`}
+                className="absolute inset-0 h-full w-full"
+                role="img"
+                aria-label={t("match.spectatorMode")}
+              >
+                <PitchMarkings />
+                <ReplayBallTrail trail={ballTrailRef.current} />
+                <ReplayPlayers
+                  frame={visualFrame}
+                  playersById={playersById}
+                  matchClock={matchClock}
+                />
+                <circle cx={animBallX} cy={animBallY} r="1.6" fill="#ffffff" stroke="#111827" strokeWidth="0.4" />
+                <circle cx={animBallX} cy={animBallY} r="3.4" fill="none" stroke="#ffffff" strokeOpacity="0.28" strokeWidth="0.7" />
+              </svg>
+            );
+          })()}
           <div className="absolute bottom-3 left-3 flex flex-col gap-2 rounded bg-black/40 px-3 py-2 text-xs font-heading text-white">
             <div className="flex items-center gap-4">
               <span>{targetFrame.home_score} - {targetFrame.away_score}</span>
@@ -284,9 +418,11 @@ export default function SpectatorReplay({
 function ReplayPlayers({
   frame,
   playersById,
+  matchClock,
 }: {
   frame: SpectatorReplayFrame;
   playersById: Record<string, SpectatorReplayPlayer>;
+  matchClock: number;
 }) {
   const visiblePlayers = Object.entries(frame.players)
     .filter(([playerId, point]) => point.active && playersById[playerId])
@@ -301,15 +437,29 @@ function ReplayPlayers({
 
   return (
     <>
-      {[...homePlayers, ...awayPlayers].map(([playerId, point]) => {
+      {[...homePlayers, ...awayPlayers].map(([playerId, point], globalIndex) => {
         const player = playersById[playerId];
         const isHome = player.side === "Home";
         const fill = isHome ? HOME_REPLAY_COLOR : AWAY_REPLAY_COLOR;
         const number = player.shirt_number || 0;
         const label = player.name?.split(" ").slice(-1)[0] || "";
 
+        // Apply wave animation on top of the interpolated base position.
+        const sideIndex = isHome
+          ? homePlayers.findIndex(([id]) => id === playerId)
+          : awayPlayers.findIndex(([id]) => id === playerId);
+        const offset = playerAnimOffset(
+          player.position,
+          player.side,
+          sideIndex >= 0 ? sideIndex : globalIndex,
+          frame.possession,
+          matchClock,
+        );
+        const ax = Math.min(96, Math.max(4, point.x + offset.dx));
+        const ay = Math.min(93, Math.max(7, point.y + offset.dy));
+
         return (
-          <g key={playerId} transform={`translate(${point.x} ${point.y})`}>
+          <g key={playerId} transform={`translate(${ax} ${ay})`}>
             <circle r="3.1" fill="#ffffff" opacity="0.95" />
             <circle r="2.5" fill={fill} stroke="#111827" strokeWidth="0.35" />
             <text y="0.8" textAnchor="middle" fontSize="2.4" fontWeight="700" fill="#ffffff">
@@ -334,11 +484,30 @@ function ReplayPlayers({
   );
 }
 
-function ReplayBallTrail({ frame }: { frame: SpectatorReplayFrame }) {
+function ReplayBallTrail({ trail }: { trail: { x: number; y: number }[] }) {
+  if (trail.length < 2) return null;
   return (
-    <g opacity="0.28">
-      <circle cx={frame.ball_x - 2.4} cy={frame.ball_y + 1.2} r="1.2" fill="#ffffff" />
-      <circle cx={frame.ball_x - 4.4} cy={frame.ball_y + 2.1} r="0.8" fill="#ffffff" />
+    <g>
+      {trail.map((pos, i) => {
+        // Oldest positions are most transparent and smallest.
+        const alpha = ((i + 1) / trail.length) * 0.40;
+        const r = 0.5 + (i / trail.length) * 1.1;
+        return (
+          <circle key={i} cx={pos.x} cy={pos.y} r={r} fill="#ffffff" opacity={alpha} />
+        );
+      })}
+      {/* Connect the trail with a faint polyline for speed indication */}
+      {trail.length >= 3 && (
+        <polyline
+          points={trail.map((p) => `${p.x},${p.y}`).join(" ")}
+          fill="none"
+          stroke="#ffffff"
+          strokeWidth="0.35"
+          strokeOpacity="0.18"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      )}
     </g>
   );
 }
