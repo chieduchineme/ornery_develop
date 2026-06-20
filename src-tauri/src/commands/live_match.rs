@@ -8,7 +8,9 @@ pub use crate::application::live_match::FinishLiveMatchResponse;
 use crate::application::live_match::{
     apply_match_command as apply_match_command_service,
     finish_live_match as finish_live_match_service,
-    get_match_snapshot as get_match_snapshot_service, start_live_match as start_live_match_service,
+    get_match_snapshot as get_match_snapshot_service,
+    get_spatial_frames as get_spatial_frames_service,
+    start_live_match as start_live_match_service,
     step_live_match as step_live_match_service,
 };
 use crate::application::team_talk::apply_team_talk as apply_team_talk_service;
@@ -155,7 +157,8 @@ pub fn get_spectator_replay_chunk(
     chunk_number: usize,
 ) -> Result<SpectatorReplayChunk, String> {
     let snapshot = get_match_snapshot_service(&state)?;
-    build_spectator_replay_chunk(&snapshot, chunk_number)
+    let spatial_frames = get_spatial_frames_service(&state);
+    build_spectator_replay_chunk(&snapshot, &spatial_frames, chunk_number)
 }
 
 /// Finish the live match: generate report, update game state, clean up.
@@ -181,6 +184,7 @@ fn build_spectator_replay_metadata(snapshot: &engine::MatchSnapshot) -> Spectato
 
 fn build_spectator_replay_chunk(
     snapshot: &engine::MatchSnapshot,
+    spatial_frames: &[engine::spatial::SpatialFrame],
     chunk_number: usize,
 ) -> Result<SpectatorReplayChunk, String> {
     let start = chunk_number
@@ -192,7 +196,10 @@ fn build_spectator_replay_chunk(
     }
 
     let frames = (start..=end)
-        .map(|minute| build_spectator_replay_frame(snapshot, minute as u8))
+        .map(|minute| {
+            let sf = spatial_frames.iter().rev().find(|f| f.minute == minute as u8);
+            build_spectator_replay_frame(snapshot, sf, minute as u8)
+        })
         .collect();
 
     Ok(SpectatorReplayChunk {
@@ -228,6 +235,7 @@ fn collect_replay_players(snapshot: &engine::MatchSnapshot) -> Vec<SpectatorRepl
 
 fn build_spectator_replay_frame(
     snapshot: &engine::MatchSnapshot,
+    spatial: Option<&engine::spatial::SpatialFrame>,
     minute: u8,
 ) -> SpectatorReplayFrame {
     let events = snapshot
@@ -243,7 +251,13 @@ fn build_spectator_replay_frame(
         engine::Side::Home => snapshot.active_home_pattern.as_deref(),
         engine::Side::Away => snapshot.active_away_pattern.as_deref(),
     };
-    let (ball_x, ball_y) = ball_coordinates(ball_zone, possession, minute, active_pattern);
+
+    // Use physics-derived ball position if available, else fall back to zone heuristic
+    let (ball_x, ball_y) = if let Some(sf) = spatial {
+        (sf.ball_x, sf.ball_y)
+    } else {
+        ball_coordinates(ball_zone, possession, minute, active_pattern)
+    };
 
     let mut players = HashMap::new();
     add_side_points(
@@ -254,6 +268,7 @@ fn build_spectator_replay_frame(
         &snapshot.home_bench,
         minute,
         snapshot.active_home_pattern.as_deref(),
+        spatial,
     );
     add_side_points(
         &mut players,
@@ -263,6 +278,7 @@ fn build_spectator_replay_frame(
         &snapshot.away_bench,
         minute,
         snapshot.active_away_pattern.as_deref(),
+        spatial,
     );
 
     SpectatorReplayFrame {
@@ -289,6 +305,7 @@ fn add_side_points(
     bench: &[engine::PlayerData],
     minute: u8,
     pattern_id: Option<&str>,
+    spatial: Option<&engine::spatial::SpatialFrame>,
 ) {
     let mut active_players = squad
         .iter()
@@ -309,13 +326,14 @@ fn add_side_points(
     }
 
     for (index, player) in active_players.iter().take(11).enumerate() {
-        let (x, y) = player_coordinates(
-            side,
-            &format!("{:?}", player.position),
-            index,
-            minute,
-            pattern_id,
-        );
+        // Prefer physics-derived position; fall back to heuristic
+        let (x, y) = if let Some(sf) = spatial {
+            sf.players.get(&player.id).copied().unwrap_or_else(|| {
+                player_coordinates(side, &format!("{:?}", player.position), index, minute, pattern_id)
+            })
+        } else {
+            player_coordinates(side, &format!("{:?}", player.position), index, minute, pattern_id)
+        };
         out.insert(
             player.id.clone(),
             SpectatorReplayPoint { x, y, active: true },

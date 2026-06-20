@@ -147,6 +147,12 @@ pub fn apply_match_command(
     Ok(snapshot)
 }
 
+pub fn get_spatial_frames(state: &StateManager) -> Vec<engine::spatial::SpatialFrame> {
+    state
+        .with_live_match(|session| session.spatial_frames().to_vec())
+        .unwrap_or_default()
+}
+
 pub fn get_match_snapshot(state: &StateManager) -> Result<engine::MatchSnapshot, String> {
     log::debug!("[cmd] get_match_snapshot");
     let snapshot = state

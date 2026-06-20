@@ -93,6 +93,7 @@ pub enum MatchMode {
 
 pub struct LiveMatchSession {
     pub match_state: LiveMatchState,
+    pub spatial: engine::spatial::SpatialSimulator,
     pub rng: StdRng,
     pub mode: MatchMode,
     pub fixture_index: usize,
@@ -110,12 +111,26 @@ impl LiveMatchSession {
     pub fn step(&mut self) -> MinuteResult {
         let result = self.match_state.step_minute(&mut self.rng);
 
+        // Advance the spatial simulation so player/ball positions are physically derived
+        self.spatial.advance(
+            &result.events,
+            result.minute,
+            result.possession,
+            result.ball_zone,
+            &mut self.rng,
+        );
+
         // Apply AI decisions for non-user sides (only during playing phases)
         if !result.is_finished {
             self.apply_ai_decisions();
         }
 
         result
+    }
+
+    /// Return all spatial frames produced so far (one per simulated minute).
+    pub fn spatial_frames(&self) -> &[engine::spatial::SpatialFrame] {
+        self.spatial.all_frames()
     }
 
     /// Step multiple minutes at once (for fast-forward / instant sim).
@@ -227,6 +242,14 @@ pub fn create_live_match(
 
     let config = MatchConfig::default();
 
+    // Capture team data needed for spatial sim before home_xi/away_xi are moved
+    let spatial = engine::spatial::SpatialSimulator::new(
+        &home_xi.players,
+        &home_xi.formation,
+        &away_xi.players,
+        &away_xi.formation,
+    );
+
     let mut match_state = LiveMatchState::new(
         home_xi,
         away_xi,
@@ -286,6 +309,7 @@ pub fn create_live_match(
 
     Ok(LiveMatchSession {
         match_state,
+        spatial,
         rng: StdRng::from_rng(&mut rand::rng()),
         mode,
         fixture_index,
